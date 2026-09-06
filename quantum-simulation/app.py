@@ -27,5 +27,5 @@ reduced_problem = transformer.transform(es_problem)
 reduced_problem_twisted = transformer.transform(es_problem_twisted)
 
 mapper = JordanWignerMapper()
-ham = mapper.map(reduced_problem.second_q_ops()[0]) # index of the main hamiltonian in returned tuple
-ham_twisted = mapper.map(reduced_problem_twisted.second_q_ops()[0])
+h = mapper.map(reduced_problem.second_q_ops()[0]) # index of the main hamiltonian in returned tuple
+h_twisted = mapper.map(reduced_problem_twisted.second_q_ops()[0])
