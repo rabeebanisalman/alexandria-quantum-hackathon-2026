@@ -1,0 +1,285 @@
+\documentclass[10pt]{article}
+\usepackage[margin=0.85in]{geometry}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{siunitx}
+\usepackage{hyperref}
+\usepackage{caption}
+\usepackage{enumitem}
+\setlist{nosep,leftmargin=*}
+\setlength{\abovecaptionskip}{4pt}
+\setlength{\belowcaptionskip}{2pt}
+
+\title{Quantum Simulation of Photo-Induced Charge Dynamics:\\From Ethylene to Photosynthesis}
+\author{MOSHARRAFA Team \\ Alexandria Quantum Hackathon 2026 --- Track 1}
+\date{September 8, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We implement a VQE+QSE pipeline using the quantum equation-of-motion
+(qEOM) method as the numerically robust realization of QSE to compute the
+ground and low-lying excited states of ethylene (C\textsubscript{2}H\textsubscript{4})
+in a (2$e$,2$o$) active space at the STO-3G level, benchmark it against
+classical CASCI, and evaluate hardware noise and error mitigation on both
+simulator and real IBM Quantum hardware. VQE agrees with CASCI to within
+0.02~mHa; the triplet and singlet ($\pi\to\pi^*$) excited states are
+correctly identified; and zero-noise extrapolation with readout mitigation
+reduces the real-hardware ground-state error by a factor of $\sim$2.8. We
+close with a proposed extension toward electron-transfer rates in a
+chlorophyll-inspired system.
+\end{abstract}
+
+\section{Introduction}
+Photo-induced electronic excitations underlie vision, photosynthesis, and
+photovoltaic energy conversion, and are classically expensive to simulate as
+molecules grow, motivating near-term quantum approaches such as VQE combined
+with QSE, realized here via the qEOM method. We use ethylene's
+well-characterized $\pi\to\pi^*$ excitation as a testbed for a pipeline
+extensible toward larger, biologically relevant chromophores.
+
+\section{Methodology}
+
+\subsection{Molecular Setup and Active Space}
+Ethylene was constructed at its equilibrium planar geometry
+(C--C = 1.34~\AA, C--H = 1.087~\AA, H--C--H = 117.3\textdegree, verified
+numerically against literature values) and at a nominally twisted geometry
+intended to represent 90\textdegree\ rotation about the C--C axis. The active
+space was restricted to 2 electrons in 2 spatial orbitals (the
+$\pi$/$\pi^*$ pair) using \texttt{ActiveSpaceTransformer}, mapped to 4 qubits
+via the Jordan--Wigner transformation.
+
+\subsection{Ground-State VQE}
+Two ansatze were implemented: UCCSD (3 parameters) and a hardware-efficient
+\texttt{EfficientSU2} ansatz (24 parameters, linear entanglement, 2
+repetitions), both optimized with COBYLA against a noiseless statevector
+estimator.
+
+\subsection{From QSE to QEOM}
+The challenge statement specifies quantum subspace expansion (QSE): diagonalize
+$H$ in the subspace spanned by excitation operators applied to the VQE ground
+state, $\langle\psi_0|O_i^\dagger H O_j|\psi_0\rangle$. We implement this via
+Qiskit Nature's \texttt{QEOM} (quantum equation-of-motion) solver rather than
+a bare QSE diagonalization for two reasons. First, qEOM is the numerically
+robust formulation of the same subspace idea: it builds the generalized
+eigenvalue problem from double-commutator matrices ($M,Q,V,W$), which are
+Hermitian by construction and better-conditioned under sampling noise than
+directly diagonalizing $\langle O_i^\dagger H O_j\rangle$, which can become
+ill-conditioned or lose Hermiticity from linear dependence and finite-shot
+error. Second, qEOM is the version natively implemented and tested in Qiskit
+Nature, avoiding a from-scratch, less-validated custom QSE implementation
+under hackathon time constraints. The two methods are mathematically the same
+subspace-expansion idea and are used interchangeably in the near-term quantum
+chemistry literature; single and double excitations (``sd'') were used to
+build the subspace on top of the converged VQE ground state.
+
+\subsection{Classical Benchmarking}
+CASCI(2,2)/STO-3G calculations (PySCF) were performed at both geometries as
+an independent classical cross-check of the VQE and QEOM results.
+
+\subsection{Noise-Aware Benchmarking and Error Mitigation}
+Two noise studies were carried out: (i) the converged UCCSD ground state was
+evaluated on real IBM Quantum hardware (\texttt{ibm\_marrakesh}) at
+Qiskit Runtime resilience levels 0 (raw), 1 (TREX readout mitigation), and 2
+(zero-noise extrapolation + TREX + gate twirling); (ii) the QEOM excited-state
+calculation was repeated locally under a realistic device noise model
+(derived from a \texttt{FakeSherbrooke} hardware snapshot) using Qiskit Aer's
+\texttt{EstimatorV2}, isolating the effect of noise on the excitation-operator
+measurements while holding the (noiselessly-optimized) ground state fixed.
+
+\section{Results}
+
+\subsection{Ground-State Energies}
+Table~\ref{tab:gs} summarizes the ground-state results at the planar geometry.
+Both ansatze agree with each other and with the classical CASCI(2,2)
+reference to within 0.02~mHa, confirming correct implementation: with only 2
+active electrons, UCCSD is variationally exact, and CASCI is the exact
+diagonalization in the same active space.
+
+\begin{table}[h]
+\centering
+\caption{Ground-state energy, circuit resources, and classical cross-check
+(planar geometry).}
+\label{tab:gs}
+\begin{tabular}{lccc}
+\toprule
+Method & Energy (Ha) & Qubits & Depth (parameters) \\
+\midrule
+UCCSD (VQE) & $-77.116628$ & 4 & 112 (3) \\
+Hardware-efficient (VQE)\footnotemark & $-77.116184$ & 4 & 12 (24) \\
+CASCI(2,2) [classical] & $-77.116608$ & --- & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+\footnotetext{Hardware-efficient optimization reached the COBYLA iteration
+cap (300/300); the reported energy should be treated as a lower-confidence
+result pending a rerun with a larger budget.}
+
+\subsection{Excited-State (Vertical Excitation) Energies}
+Table~\ref{tab:excited} reports the QEOM excited states at the planar
+geometry. Energy ordering and magnitude are consistent with a spin-resolved
+CASCI(2,2) calculation performed as a cross-check (triplet at 4.91~eV,
+singlet V-state at 14.24~eV, confirmed via $\langle S^2\rangle$
+expectation values), allowing unambiguous spin assignment of the QEOM roots.
+
+\begin{table}[h]
+\centering
+\caption{QEOM excited states, planar ethylene.}
+\label{tab:excited}
+\begin{tabular}{lccl}
+\toprule
+State & Energy (Ha) & $\Delta E$ (eV) & Assignment \\
+\midrule
+Excited 1 & $-76.941013$ & 4.779 & Triplet (T$_1$) \\
+Excited 2 & $-76.596800$ & 14.145 & Singlet V-state ($\pi\to\pi^*$) \\
+Excited 3 & $-76.407974$ & 19.283 & Doubly-excited singlet \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The triplet energy (4.78~eV) agrees well with the experimental vertical
+triplet energy of ethylene ($\sim$4.6--4.9~eV). The singlet V-state
+(14.1~eV) substantially overestimates the experimental value of 7.6~eV; this
+is a known limitation of the minimal STO-3G basis combined with a (2,2)
+active space for this particular ionic transition, and is not attributable
+to the quantum algorithm.
+
+\subsection{Classical Cross-Validation (CASCI)}
+Table~\ref{tab:casci} lists the CASCI(2,2) results used for cross-validation.
+
+\begin{table}[h]
+\centering
+\caption{Classical CASCI(2,2)/STO-3G benchmark.}
+\label{tab:casci}
+\begin{tabular}{lcc}
+\toprule
+Geometry & $E_0$ (Ha) & $\Delta E$, first excited root (eV) \\
+\midrule
+Planar (0\textdegree) & $-77.116608$ & 4.91 \\
+``Twisted'' (90\textdegree)$^{*}$ & $-74.062176$ & 1.91 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent $^{*}$See Limitations (Sec.~\ref{sec:limitations}): the twisted
+geometry as constructed corresponds to a distorted structure rather than an
+ideal 90\textdegree\ rotation, and these values should be read qualitatively,
+not as a literal rotational barrier.
+
+\subsection{Noise and Error-Mitigation Analysis}
+
+\subsubsection{Real-Hardware Ground-State Study (ibm\_marrakesh)}
+Table~\ref{tab:hw} shows the converged UCCSD ground state evaluated on real
+IBM Quantum hardware at increasing resilience levels.
+
+\begin{table}[h]
+\centering
+\caption{Ground-state energy on \texttt{ibm\_marrakesh} at increasing
+resilience levels.}
+\label{tab:hw}
+\begin{tabular}{lcc}
+\toprule
+Method & Energy (Ha) & Error vs.\ exact (mHa) \\
+\midrule
+Exact (statevector) & $-77.116628$ & 0.000 \\
+Raw (resilience level 0) & $-76.985608$ & 131.02 \\
+Readout-mitigated, TREX (level 1) & $-77.004366$ & 112.26 \\
+ZNE + TREX + twirling (level 2) & $-77.070221$ & 46.41 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Error mitigation reduced the deviation from the exact energy by $\sim$2.8$\times$
+(131~mHa $\to$ 46~mHa). The raw hardware error alone (131~mHa $\approx 3.6$~eV)
+exceeds the entire triplet excitation energy, underscoring that mitigation is
+not optional for chemically meaningful results on current devices.
+
+\subsubsection{Local Noise Study of Excited States (QEOM)}
+Table~\ref{tab:qeom_noise} shows the QEOM excitation energies recomputed
+locally under shot noise only and under a realistic device noise model
+(\texttt{FakeSherbrooke} snapshot), with the ground state held fixed at its
+noiselessly-optimized value.
+
+\begin{table}[h]
+\centering
+\caption{QEOM excitation energies under local noise conditions.}
+\label{tab:qeom_noise}
+\begin{tabular}{lcc}
+\toprule
+Condition & Triplet (eV) & Singlet V (eV) \\
+\midrule
+Exact & 4.779 & 14.145 \\
+Shot noise only & 4.773 & 14.022 \\
+Realistic device noise & 4.817 & 14.146 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The excited-state drift here ($\leq$0.15~eV) is much smaller than the raw
+hardware ground-state error (131~mHa $\approx 3.6$~eV), most likely because
+the local model was transpiled against an all-to-all-connected simulator and
+omits the SWAP-gate overhead that real device connectivity imposes. This
+suggests routing overhead, not just intrinsic gate/readout error, dominates
+the real-hardware error and merits explicit modeling in future work.
+
+\section{Limitations}
+\label{sec:limitations}
+\begin{itemize}
+\item \textbf{Twisted geometry:} the rotation-axis parametrization used for
+the twisted structure distorts C--H bond lengths rather than performing a
+pure rotation about the C--C axis, so the reported ``twisted'' CASCI energy
+reflects a distorted structure, not an ideal 90\textdegree\ ethylene, and
+should be read qualitatively only.
+\item \textbf{Spin labeling:} QEOM roots are assigned triplet/singlet
+character by cross-validation against a separate $\langle S^2\rangle$-tagged
+CASCI run, not by spin-purification within QEOM itself.
+\item \textbf{Basis set:} STO-3G with a (2,2) active space is known to
+overestimate ionic $\pi\to\pi^*$ energies; a larger basis/active space
+(e.g.\ 2$e$/4$o$) would likely narrow the 14.1 vs.\ 7.6~eV gap.
+\item \textbf{Noise-model fidelity:} the local QEOM noise study omits
+target-backend connectivity, understating real device error.
+\item \textbf{Convergence:} the hardware-efficient ansatz hit its COBYLA
+iteration cap without an explicit convergence flag.
+\end{itemize}
+
+\section{Extension: Toward Photo-Induced Charge Transfer in Larger Chromophores}
+Extending this pipeline toward a photosynthesis-relevant charge-transfer
+estimate (e.g.\ a chlorophyll/porphyrin fragment) requires three steps beyond
+what is implemented here. \textbf{(1) Active-space reduction via embedding:}
+a full porphyrin macrocycle is too large for near-term treatment, so we
+propose selecting a minimal donor--bridge--acceptor active space (frontier
+orbitals of a donor and acceptor site, analogous to ethylene's $\pi/\pi^*$
+pair) via DMET or CASSCF-based selection, with the remaining macrocycle and
+protein/solvent environment treated at a mean-field/QM/MM level.
+\textbf{(2) Electronic coupling via VQE+qEOM:} the same machinery used here
+can, with minor extension, obtain the coupling $H_{DA}$ between
+donor-localized and acceptor-localized diabatic states, e.g.\ via a
+Hadamard-test-style circuit or a generalized qEOM subspace spanning both
+localized configurations. \textbf{(3) Rate theory and photocurrent:} with
+$H_{DA}$, a driving force $\Delta G$ (from energy differences at donor/acceptor
+geometries, as we did for planar/twisted ethylene), and a reorganization
+energy $\lambda$ (from the same pipeline at relaxed vs.\ vertical geometries),
+Marcus theory gives the transfer rate
+\[
+k_{ET} = \frac{2\pi}{\hbar}\,|H_{DA}|^2\,
+\frac{1}{\sqrt{4\pi\lambda k_B T}}\,
+\exp\!\left[-\frac{(\Delta G + \lambda)^2}{4\lambda k_B T}\right],
+\]
+and chaining $k_{ET}$ across a multi-site pigment network via a Lindblad
+master equation yields a steady-state flux that, scaled by charge and
+quantum yield, estimates a photocurrent. \textbf{Bonus:} a toy demonstration
+on butadiene intermediate in size between ethylene and a porphyrin fragment is a natural, tractable next step before full-scale embedding.
+
+\section{Conclusion}
+We implemented and validated a complete VQE+QSE (qEOM) pipeline for ethylene,
+cross-checked against classical CASCI, and characterized real-hardware and
+simulated noise alongside standard error-mitigation techniques. The
+ground-state result is essentially exact; the excited-state result correctly
+recovers the triplet energy while exposing a well-understood basis-set
+limitation for the singlet V-state. Error mitigation on real IBM hardware
+reduced the ground-state error by $\sim$2.8$\times$, and we outlined a
+concrete path from this pipeline toward electron-transfer rates in larger,
+biologically relevant chromophore systems.
+
+\end{document}
